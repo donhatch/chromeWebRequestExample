@@ -1,0 +1,17 @@
+{
+    "name": "chromeWebRequestExample",
+    "version": "0.0.0",
+    "description": "Example of using chrome.webRequest API.",
+    "background": {
+	"scripts": [
+            "EXACT.js",
+            "background.js"
+        ]
+    },
+    "permissions": [
+	"webRequest",
+	"webRequestBlocking",
+	"*://*/*"
+    ],
+    "manifest_version": 2
+}
