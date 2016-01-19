@@ -2,11 +2,13 @@
 //	- unexpected onHeadersReceived of https://pr.comet.yahoo.com from time to time.
 //        oh hmm, it's ajax.  request id does seem to be from before I stared but... Should look into how this happens.
 //
-// TODO: swim lanes!
 // TODO: keep record of unexpected events (like the pr.comet.yahoo.com stuff?)
+// TODO: maybe make an actual flush timer?
 
-var verboseLevel = 2; // 0: nothing, 1: extension init and errors, 2: every request, 3: lots of details
+var verboseLevel = 1; // 0: nothing, 1: extension init and errors, 2: every request, 3: lots of details
 if (verboseLevel >= 1) console.log("    in background.js");
+
+var allowCORSFlag = true; // if set, try to allow CORS wherever possible
 
 // box drawing characters: https://en.wikipedia.org/wiki/Box-drawing_character
 var BOX_NW =    '\u250F';
@@ -164,7 +166,7 @@ var RequestLogAliveOrDead = function(requestId, string, isEnd) {
     for (var i = 1; i < args.length; ++i) { // skip 0
       requestLogBuffer.push(args[i]);
     }
-    if (false) { // set to true to debug what's blocking and what isn't
+    if (false) { // set to true to debug what's taking a long time and what isn't
       console.log("(after added something, requestLogBuffer.length = "+EXACT(requestLogBuffer.length)+")");
     }
 
@@ -194,8 +196,41 @@ var RequestLogFlush = function() {
 //      traceStrings: an array of strings containing a trace of what happened.
 var stash = new Object;
 
+// TODO: use this to make sure that when we see things not in stash, we've NEVER seen them... then get rid of this!
+// so logic should go:
+//      if not in stash
+//        if ever seen before:
+//          alert!
 var allIdsEverSeenSet = new Set;
 var allIdsEverSeenList = [];
+
+var getHeader = function(headers, name) {
+  var nameToLowerCase = name.toLowerCase();
+  for (var i = 0; i < headers.length; i++) {
+    if (headers[i].name.toLowerCase() === nameToLowerCase) {
+      return headers[i].value;
+    }
+  }
+  return null;
+};  // getHeader
+var setHeader = function(headers, name, value, requestIdForLogging) {
+  var nameToLowerCase = name.toLowerCase();
+  for (var i = 0; i < headers.length; i++) {
+    if (headers[i].name.toLowerCase() === nameToLowerCase) {
+      if (verboseLevel >= 2) RequestLogAlive(requestIdForLogging, "      changing header "+EXACT(headers[i].name)+" to "+EXACT(value));
+      headers[i].value = value;
+      return;
+    }
+  }
+  if (verboseLevel >= 2) RequestLogAlive(requestIdForLogging, "      adding header "+EXACT(name)+" : "+EXACT(value));
+  headers.push({name:name, value:value});
+};  // setHeader
+
+
+
+
+
+
 
 //
 // Define and install chrome.webRequest listeners.
@@ -254,7 +289,16 @@ var onBeforeRequestListener = function(details) {
 };  // onBeforeRequestListener
 // aka requestListener
 var onBeforeSendHeadersListener = function(details) {
+  // empirically, we never seem to get this unless onBeforeRequestListener has been called, so don't need to check.
   if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onBeforeSendHeaders listener");
+  if (verboseLevel >= 3) RequestLogAlive(details.requestId, "      details = "+EXACT(details));
+
+  var Origin = getHeader(details.requestHeaders, "Origin");
+  if (Origin != null) {
+    if (verboseLevel >= 2) RequestLogAlive(details.requestId, "      stashing request id "+details.requestId+" Origin: "+EXACT(Origin));
+    stash[details.requestId].Origin = Origin;
+  }
+
   if (!allIdsEverSeenSet.has(details.requestId)) {
     console.log("hey! onBeforeSendHeaders listener never saw id="+details.requestId+" before: "+details.url);
     alert("hey! onBeforeSendHeaders listener never saw id="+details.requestId+" before: "+details.url);
@@ -283,13 +327,28 @@ var onHeadersReceivedListener = function(details) {
     return null; // I think this is shorthand for "don't change it"
   }
 */
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onHeadersReceived listener");
+  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onHeadersReceived listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode);
+  if (verboseLevel >= 3) RequestLogAlive(details.requestId, "      details = "+EXACT(details));
   if (!allIdsEverSeenSet.has(details.requestId)) {
     alert("hey! onHeadersReceived listener never saw id="+details.requestId+" before: details.url="+EXACT(details.url)+" details="+EXACT(details));
     return null;
   }
+
   var answer = null;
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    out onHeadersReceived listener, returning "+EXACT(answer));
+  if (allowCORSFlag) {
+    var Origin = stash[details.requestId].Origin;
+    if (Origin !== undefined) {
+      setHeader(details.responseHeaders, "Access-Control-Allow-Origin", Origin, details.requestId);
+    } else {
+      setHeader(details.responseHeaders, "Access-Control-Allow-Origin", "*", details.requestId);
+    }
+    // The following is required when using ajax with withCredentials=true, but doesn't hurt in general
+    setHeader(details.responseHeaders, "Access-Control-Allow-Credentials", "true", details.requestId);
+    answer = {responseHeaders: details.responseHeaders};
+    if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    out onHeadersReceived listener, returning "+Object.keys(answer.responseHeaders).length+" headers"+(verboseLevel>=3 ? ": "+EXACT(answer) : ""));
+  } else {
+    if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    out onHeadersReceived listener, returning "+EXACT(answer));
+  }
   //if (verboseLevel >= 2) RequestLogFlush();  // evidently might might be a while before more output
   return answer;
 };  // onHeadersReceivedListener
@@ -304,11 +363,15 @@ var onAuthRequiredListener = function(details) {
   return answer;
 };  // onAuthRequiredListener
 var onBeforeRedirectListener = function(details) {
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onBeforeRedirect listener");
+  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onBeforeRedirect listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode+" -> "+EXACT(details.redirectUrl));
+  if (verboseLevel >= 3) RequestLogAlive(details.requestId, "      details = "+EXACT(details));
   if (!allIdsEverSeenSet.has(details.requestId)) {
     alert("hey! onBeforeRedirect listener never saw id="+details.requestId+" before: "+details.url);
     return null;
   }
+
+  stash[details.requestId].urls.push(details.url);
+
   var answer = null;
   if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    out onBeforeRedirect listener, returning "+EXACT(answer));
   return answer;
@@ -324,16 +387,10 @@ var onResponseStartedListener = function(details) {
   return answer;
 };  // onResponseStartedListener
 var onCompletedListener = function(details) {
-/*
-  if (!(details.requestId in stash)) {
-    console.info("in onCompleted listener for requestId="+details.requestId+" but I haven't seen it before, assuming it was initiated before this extension was loaded, ignoring it: ",details);
-    return null; // I think this is shorthand for "don't change it"
-  }
-*/
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onCompleted listener");
+  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onCompleted listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode);
   if (verboseLevel >= 3) RequestLogAlive(details.requestId, "      details = "+EXACT(details));
   if (!allIdsEverSeenSet.has(details.requestId)) {
-    alert("hey! onCompleted listener never saw id="+details.requestId+" before: "+details.url);
+    alert("hey! onCompleted listener never saw id="+details.requestId+" before: "+details.url+"(maybe initiated before this extension was loaded?)");
     return null;
   }
   var answer = null;
@@ -344,17 +401,11 @@ var onCompletedListener = function(details) {
   return answer;
 };  // onCompletedListener
 var onErrorOccurredListener = function(details) {
-  if (details.url === "http://heyheyhey/") return; // we cancelled it, nothing interesting happening here
-/*
-  if (!(details.requestId in stash)) {
-    console.info("in onErrorOccurred listener for requestId="+details.requestId+" but I haven't seen it before, assuming it was initiated before this extension was loaded, ignoring it: ",details);
-    return null; // I think this is shorthand for "don't change it"
-  }
-*/
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onErrorOccurred listener");
+  if (details.url === "http://heyheyhey/") return null; // we cancelled it, nothing to see here
+  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onErrorOccurred listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode);
   if (verboseLevel >= 3) RequestLogAlive(details.requestId, "      details = "+EXACT(details));
   if (!allIdsEverSeenSet.has(details.requestId)) {
-    alert("hey! onErrorOccurred listener never saw id="+details.requestId+" before: "+details.url);
+    alert("hey! onErrorOccurred listener never saw id="+details.requestId+" before: "+details.url+"(maybe initiated before this extension was loaded?)");
     return null;
   }
   var answer = null;
@@ -363,11 +414,14 @@ var onErrorOccurredListener = function(details) {
   if (verboseLevel >= 2) RequestLogFlush();  // definitely might be a while before more output
   return answer;
 };  // onErrorOccurredListener
-chrome.webRequest.onBeforeRequest.addListener(onBeforeRequestListener, {urls:["<all_urls>"]}, ["blocking"]);  // options: blocking, requestBody
-chrome.webRequest.onBeforeSendHeaders.addListener(onBeforeSendHeadersListener, {urls:["<all_urls>"]}, ["blocking", "requestHeaders"]);  // options: requestHeaders, blocking
+chrome.webRequest.onBeforeRequest.addListener(onBeforeRequestListener, {urls:["<all_urls>"]}, []);  // options: blocking, requestBody
+chrome.webRequest.onBeforeSendHeaders.addListener(onBeforeSendHeadersListener, {urls:["<all_urls>"]}, ["requestHeaders"]);  // options: requestHeaders, blocking
 chrome.webRequest.onSendHeaders.addListener(onSendHeadersListener, {urls:["<all_urls>"]}, ["requestHeaders"]);  // options: requestHeaders
-chrome.webRequest.onHeadersReceived.addListener(onHeadersReceivedListener, {urls:["<all_urls>"]}, ["blocking", "responseHeaders"]);  // options: blocking, responseHeaders
-chrome.webRequest.onAuthRequired.addListener(onAuthRequiredListener, {urls:["<all_urls>"]}, ["blocking", "responseHeaders"]);  // options: responseHeaders, blocking, asyncBlocking
+chrome.webRequest.onHeadersReceived.addListener(onHeadersReceivedListener, {urls:["<all_urls>"]},
+   allowCORSFlag ? ["blocking", "responseHeaders"]
+		 : ["responseHeaders"]
+);  // options: blocking, responseHeaders
+chrome.webRequest.onAuthRequired.addListener(onAuthRequiredListener, {urls:["<all_urls>"]}, ["responseHeaders"]);  // options: responseHeaders, blocking, asyncBlocking
 chrome.webRequest.onBeforeRedirect.addListener(onBeforeRedirectListener, {urls:["<all_urls>"]}, ["responseHeaders"]);  // options: responseHeaders
 chrome.webRequest.onResponseStarted.addListener(onResponseStartedListener, {urls:["<all_urls>"]}, ["responseHeaders"]);  // options: responseHeaders
 chrome.webRequest.onCompleted.addListener(onCompletedListener, {urls:["<all_urls>"]}, ["responseHeaders"]);  // options: responseHeaders
