@@ -4,11 +4,15 @@
 //
 // TODO: keep record of unexpected events (like the pr.comet.yahoo.com stuff?)
 // TODO: maybe make an actual flush timer?
+// TODO: stackoverflow question: "what's the most graceful way to make chrome.webRequest return a synthetic response?"
 
-var verboseLevel = 1; // 0: nothing, 1: extension init and errors, 2: every request, 3: lots of details
-if (verboseLevel >= 1) console.log("    in background.js");
-
+var verboseLevel = 2; // 0: nothing, 1: extension init and errors, 2: every request, 3: lots of details
 var allowCORSFlag = true; // if set, try to allow CORS wherever possible
+var flushAfterEveryLogMessage = false; // can set this to true here or when something weird happens, for better debuggability
+
+if (verboseLevel >= 1) console.log("    in background.js");
+if (verboseLevel >= 1) console.log("      verboseLevel = "+EXACT(verboseLevel));
+if (verboseLevel >= 1) console.log("      allowCORSFlag = "+EXACT(allowCORSFlag));
 
 // box drawing characters: https://en.wikipedia.org/wiki/Box-drawing_character
 var BOX_NW =    '\u250F';
@@ -148,6 +152,7 @@ var GetConsoleLogArgsForRequestIdAliveOrDead = function(requestId, isEnd) {
 
 // Example of reliably coloring console.log output:
 //   console.log("%c%s%c%s", "color:red;font-weight:bold", "this comes out in bold red", "color:green", " and this comes out in normal green");
+// details.requestId is used, and maybe detail.url for debugging weirdness.
 var requestLogBuffer = [""];
 var RequestLogAliveOrDead = function(requestId, string, isEnd) {
   var args = GetConsoleLogArgsForRequestIdAliveOrDead(requestId, isEnd);
@@ -170,13 +175,11 @@ var RequestLogAliveOrDead = function(requestId, string, isEnd) {
       console.log("(after added something, requestLogBuffer.length = "+EXACT(requestLogBuffer.length)+")");
     }
 
-    if (false) { // set to true to make it flush after everything
+    if (flushAfterEveryLogMessage) {
       RequestLogFlush();
     }
   }
-
-
-};
+};  // RequestLogAliveOrDead
 var RequestLogAlive = function(requestId, string) {
   return RequestLogAliveOrDead(requestId, string, false);
 };
@@ -243,32 +246,6 @@ var onBeforeRequestListener = function(details) {
   }
 
   
-  // XXX TODO: what is the most graceful way of just sending my extension a signal? can do with messages but... would be nice to just do it in the browser or something? hmm
-  // can I make this request return a web page??? could do it with something obscene by sending a request to google.com and replacing the response, but... what's a better way?
-  // Maybe a good question for StackOverflow.
-  if (details.url === "http://heyheyhey/") {
-    console.log("got special request "+details.url);
-    console.log("stash = ",stash);
-    console.log("stash = "+EXACT(stash));
-    console.log("allIdsEverSeenList = "+EXACT(allIdsEverSeenList));
-    console.log("swimLaneToRequestId.length = ",swimLaneToRequestId.length);
-    console.log("swimLaneToRequestId = ",swimLaneToRequestId);
-    console.log("requestIdToSwimLane = ",requestIdToSwimLane);
-
-    // Show current status of all outstanding
-    if (verboseLevel >= 2) {
-      for (var i = 0; i < swimLaneToRequestId.length; ++i) {
-        var requestId = swimLaneToRequestId[i];
-        if (requestId != null) {
-          RequestLogAlive(requestId, " "+EXACT(stash[requestId].urls));
-        }
-      }
-      RequestLogFlush();
-    }
-
-    return {cancel : true};
-  }
-
   if (details.requestId in stash) {
     // This happens, on redirects (including switcheroos done by this extension and others)
   } else {
@@ -283,6 +260,42 @@ var onBeforeRequestListener = function(details) {
   if (verboseLevel >= 2) RequestLogAlive(details.requestId, "[   in onBeforeRequest listener: "+EXACT(details.method)+" "+EXACT(details.url));
   if (verboseLevel >= 2) RequestLogAlive(details.requestId, "      details = "+EXACT(details));
   var answer = null;
+
+  // XXX TODO: what is the most graceful way of just sending my extension a signal? can do with messages but... would be nice to just do it in the browser or something? hmm
+  // can I make this request return a web page??? could do it with something obscene by sending a request to google.com and replacing the response, but... what's a better way?
+  // Maybe a good question for StackOverflow.
+  if (details.url === "http://heyheyhey/") {
+    if (verboseLevel >= 2) RequestLogFlush();
+    console.log("---------------------------------------------");
+    console.log(""+details.requestId+": got special request "+details.url);
+    console.log("stash = ",stash);
+    console.log("stash = "+EXACT(stash));
+    console.log("allIdsEverSeenList = "+EXACT(allIdsEverSeenList));
+    console.log("swimLaneToRequestId.length = ",swimLaneToRequestId.length);
+    console.log("swimLaneToRequestId = ",swimLaneToRequestId);
+    console.log("requestIdToSwimLane = ",requestIdToSwimLane);
+
+    // Show current status of all outstanding
+    if (verboseLevel >= 2) {
+      for (var i = 0; i < swimLaneToRequestId.length; ++i) {
+        var requestId = swimLaneToRequestId[i];
+        if (requestId != null) {
+          // It has a swim lane, so it should have a stash entry too
+          if (stash[requestId] === undefined) {
+            alert("chromeWebRequestExample extension: Internal error: requestId="+requestId+" has a swim lane but no stash entry?!?");
+            console.log("Internal error: requestId="+requestId+" has a swim lane but no stash entry?!?");
+          } else {
+            RequestLogAlive(requestId, " "+EXACT(stash[requestId].urls)); // note, calling with requestId instead of details!
+          }
+        }
+      }
+      RequestLogFlush();
+    }
+    console.log("---------------------------------------------");
+
+    answer = {cancel : true};
+  }
+
   if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    out onBeforeRequest listener, returning "+EXACT(answer));
   //if (verboseLevel >= 2) RequestLogFlush();  // evidently might might be a while before more output
   return answer;
@@ -290,7 +303,7 @@ var onBeforeRequestListener = function(details) {
 // aka requestListener
 var onBeforeSendHeadersListener = function(details) {
   // empirically, we never seem to get this unless onBeforeRequestListener has been called, so don't need to check.
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onBeforeSendHeaders listener");
+  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onBeforeSendHeaders listener: "+EXACT(details.method)+" "+EXACT(details.url));
   if (verboseLevel >= 3) RequestLogAlive(details.requestId, "      details = "+EXACT(details));
 
   var Origin = getHeader(details.requestHeaders, "Origin");
@@ -338,12 +351,12 @@ var onHeadersReceivedListener = function(details) {
   if (allowCORSFlag) {
     var Origin = stash[details.requestId].Origin;
     if (Origin !== undefined) {
-      setHeader(details.responseHeaders, "Access-Control-Allow-Origin", Origin, details.requestId);
+      setHeader(details.responseHeaders, "Access-Control-Allow-Origin", Origin, details);
     } else {
-      setHeader(details.responseHeaders, "Access-Control-Allow-Origin", "*", details.requestId);
+      setHeader(details.responseHeaders, "Access-Control-Allow-Origin", "*", details);
     }
     // The following is required when using ajax with withCredentials=true, but doesn't hurt in general
-    setHeader(details.responseHeaders, "Access-Control-Allow-Credentials", "true", details.requestId);
+    setHeader(details.responseHeaders, "Access-Control-Allow-Credentials", "true", details);
     answer = {responseHeaders: details.responseHeaders};
     if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    out onHeadersReceived listener, returning "+Object.keys(answer.responseHeaders).length+" headers"+(verboseLevel>=3 ? ": "+EXACT(answer) : ""));
   } else {
@@ -391,35 +404,36 @@ var onCompletedListener = function(details) {
   if (verboseLevel >= 3) RequestLogAlive(details.requestId, "      details = "+EXACT(details));
   if (!allIdsEverSeenSet.has(details.requestId)) {
     alert("hey! onCompleted listener never saw id="+details.requestId+" before: "+details.url+"(maybe initiated before this extension was loaded?)");
-    return null;
+  } else {
+    var answer = null;
+    delete stash[details.requestId];
   }
-  var answer = null;
-  delete stash[details.requestId];
 
   if (verboseLevel >= 2) RequestLogDead(details.requestId, "]   out onCompleted listener, returning "+EXACT(answer));
   if (verboseLevel >= 2) RequestLogFlush();  // definitely might be a while before more output
   return answer;
 };  // onCompletedListener
 var onErrorOccurredListener = function(details) {
-  if (details.url === "http://heyheyhey/") return null; // we cancelled it, nothing to see here
   if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onErrorOccurred listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode);
   if (verboseLevel >= 3) RequestLogAlive(details.requestId, "      details = "+EXACT(details));
   if (!allIdsEverSeenSet.has(details.requestId)) {
     alert("hey! onErrorOccurred listener never saw id="+details.requestId+" before: "+details.url+"(maybe initiated before this extension was loaded?)");
-    return null;
+  } else {
+    var answer = null;
+    delete stash[details.requestId];
   }
-  var answer = null;
-  delete stash[details.requestId];
   if (verboseLevel >= 2) RequestLogDead(details.requestId, "]   out onErrorOccurred listener, returning "+EXACT(answer));
   if (verboseLevel >= 2) RequestLogFlush();  // definitely might be a while before more output
   return answer;
 };  // onErrorOccurredListener
-chrome.webRequest.onBeforeRequest.addListener(onBeforeRequestListener, {urls:["<all_urls>"]}, []);  // options: blocking, requestBody
+chrome.webRequest.onBeforeRequest.addListener(onBeforeRequestListener, {urls:["<all_urls>"]}, [
+  "blocking", // so we can cancel the heyheyhey, if nothing else... although maybe we shouldn't? think about this.
+]);  // options: blocking, requestBody
 chrome.webRequest.onBeforeSendHeaders.addListener(onBeforeSendHeadersListener, {urls:["<all_urls>"]}, ["requestHeaders"]);  // options: requestHeaders, blocking
 chrome.webRequest.onSendHeaders.addListener(onSendHeadersListener, {urls:["<all_urls>"]}, ["requestHeaders"]);  // options: requestHeaders
 chrome.webRequest.onHeadersReceived.addListener(onHeadersReceivedListener, {urls:["<all_urls>"]},
-   allowCORSFlag ? ["blocking", "responseHeaders"]
-		 : ["responseHeaders"]
+  allowCORSFlag ? ["blocking", "responseHeaders"]
+		: ["responseHeaders"]
 );  // options: blocking, responseHeaders
 chrome.webRequest.onAuthRequired.addListener(onAuthRequiredListener, {urls:["<all_urls>"]}, ["responseHeaders"]);  // options: responseHeaders, blocking, asyncBlocking
 chrome.webRequest.onBeforeRedirect.addListener(onBeforeRedirectListener, {urls:["<all_urls>"]}, ["responseHeaders"]);  // options: responseHeaders
