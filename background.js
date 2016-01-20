@@ -351,12 +351,12 @@ var onHeadersReceivedListener = function(details) {
   if (allowCORSFlag) {
     var Origin = stash[details.requestId].Origin;
     if (Origin !== undefined) {
-      setHeader(details.responseHeaders, "Access-Control-Allow-Origin", Origin, details);
+      setHeader(details.responseHeaders, "Access-Control-Allow-Origin", Origin, details.requestId);
     } else {
-      setHeader(details.responseHeaders, "Access-Control-Allow-Origin", "*", details);
+      setHeader(details.responseHeaders, "Access-Control-Allow-Origin", "*", details.requestId);
     }
     // The following is required when using ajax with withCredentials=true, but doesn't hurt in general
-    setHeader(details.responseHeaders, "Access-Control-Allow-Credentials", "true", details);
+    setHeader(details.responseHeaders, "Access-Control-Allow-Credentials", "true", details.requestId);
     answer = {responseHeaders: details.responseHeaders};
     if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    out onHeadersReceived listener, returning "+Object.keys(answer.responseHeaders).length+" headers"+(verboseLevel>=3 ? ": "+EXACT(answer) : ""));
   } else {
