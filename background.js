@@ -6,8 +6,8 @@
 // TODO: maybe make an actual flush timer?
 // TODO: stackoverflow question: "what's the most graceful way to make chrome.webRequest return a synthetic response?"
 
-var verboseLevel = 2; // 0: nothing, 1: extension init and errors, 2: every request, 3: lots of details
-var allowCORSFlag = true; // if set, try to allow CORS wherever possible
+var verboseLevel = 1; // 0: nothing, 1: extension init and errors, 2: every request, 3: lots of details
+var allowCORSFlag = false; // if set, try to allow CORS wherever possible
 var flushAfterEveryLogMessage = false; // can set this to true here or when something weird happens, for better debuggability
 
 if (verboseLevel >= 1) console.log("    in background.js");
@@ -340,7 +340,8 @@ var onHeadersReceivedListener = function(details) {
   if (allowCORSFlag) {
     var Origin = stash[details.requestId].Origin;
     if (Origin !== undefined) {
-      setHeader(details.responseHeaders, "Access-Control-Allow-Origin", Origin, details.requestId);
+      //setHeader(details.responseHeaders, "Access-Control-Allow-Origin", "*", details.requestId); // simplistic extension
+      setHeader(details.responseHeaders, "Access-Control-Allow-Origin", Origin, details.requestId); // smart extension
     } else {
       setHeader(details.responseHeaders, "Access-Control-Allow-Origin", "*", details.requestId);
     }
