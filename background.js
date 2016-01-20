@@ -22,6 +22,17 @@ var BOX_VERT =  '\u2503';
 var BOX_SW =    '\u2517';
 var BOX_SE =    '\u251B';
 var BOX_W =     '\u2523'; // W wall with spike pointing E
+var BOX_N =     '\u2533'; // N wall with spike pointing S
+
+var BOX_NW_FAINT =    '\u250C';
+var BOX_HORIZ_FAINT = '\u2500';
+var BOX_NE_FAINT =    '\u2510';
+var BOX_VERT_FAINT =  '\u2502';
+var BOX_SW_FAINT =    '\u2514';
+var BOX_SE_FAINT =    '\u2518';
+var BOX_W_FAINT =     '\u251C'; // W wall with spike pointing E
+var BOX_N_FAINT =     '\u252C'; // N wall with spike pointing S
+
 
 var colors = [
     '#f00', // red
@@ -67,44 +78,44 @@ var ReleaseSwimLane = function(requestId) {
 var now0 = Date.now();
 
 
-var GetConsoleLogArgsForRequestIdAliveOrDead = function(requestId, isEnd) {
+// age=0 means start, age=1 means continue, age=2 means end
+var GetConsoleLogArgsForRequestIdAliveOrDead = function(requestId, age) {
   var verboseLevel = 0;
-  if (verboseLevel >= 1) console.log("in GetConsoleLogArgsForRequestIdAliveOrDead(requestId="+EXACT(requestId)+", isEnd="+EXACT(isEnd)+")");
+  if (verboseLevel >= 1) console.log("in GetConsoleLogArgsForRequestIdAliveOrDead(requestId="+EXACT(requestId)+", age="+EXACT(age)+")");
   var swimLane = GetSwimLane(requestId);
   var hadSwimLane = (swimLane !== undefined);
   if (!hadSwimLane) {
     swimLane = AllocateSwimLane(requestId);
   }
-
-  var myColor = colors[requestId % colors.length];
-  if (!hadSwimLane) {
-    if (!isEnd) {
-      var myChar = BOX_NW;
-    } else {
-      var myChar = BOX_HORIZ; // not ideal
-    }
-  } else {
-    if (!isEnd) {
-      var myChar = BOX_W;
-    } else {
-      var myChar = BOX_SW;
-    }
-  }
-
   var maxSwimLane = swimLaneToRequestId.length - 1;
   while (maxSwimLane >= 0 && swimLaneToRequestId[maxSwimLane] == null) {
     maxSwimLane--;
   }
+
+  var myColor = colors[requestId % colors.length];
+
   var answer = [""];
 
+  if (age != 0 && !hadSwimLane) {
+    answer[0] += "%c%s";
+    answer.push("color:red");
+    answer.push("[FIRST APPEARANCE OF "+requestId+" NOT IN onBeforeRequest -- PROBABLY REQUEST WAS CREATED BEFORE EXTENSION STARTED]\n");
+  }
+
+
   if (true) {
+    // Prepend timestamp.
+    // Arguably we should be printing the timestamp of the request when we have it...
     answer[0] += "%c%s";
     answer.push("color:black");
     var ms = Date.now() - now0;
     var s = ms / 1000.;
-    answer.push(""+s.toFixed(3)+" ");
+    s = s.toFixed(3);
+    s = ("                 "+s).slice(-10); // left-pad to 10 chars
+    answer.push(s + " ");
   }
 
+  var myChar = (age==0 ? BOX_NW : age==1 ? BOX_W : BOX_SW);
   for (var i = 0; i <= maxSwimLane; ++i) {
     var r = swimLaneToRequestId[i];
 
@@ -142,7 +153,7 @@ var GetConsoleLogArgsForRequestIdAliveOrDead = function(requestId, isEnd) {
   answer.push("color:"+myColor);
   answer.push(BOX_HORIZ+" "+requestId);
 
-  if (isEnd) {
+  if (age == 2) {
     ReleaseSwimLane(requestId);
   }
   if (verboseLevel >= 1) console.log("out GetConsoleLogArgsForRequestIdAliveOrDead(requestId="+EXACT(requestId)+", isEnd="+EXACT(isEnd)+"), returning "+EXACT(answer));
@@ -154,8 +165,8 @@ var GetConsoleLogArgsForRequestIdAliveOrDead = function(requestId, isEnd) {
 //   console.log("%c%s%c%s", "color:red;font-weight:bold", "this comes out in bold red", "color:green", " and this comes out in normal green");
 // details.requestId is used, and maybe detail.url for debugging weirdness.
 var requestLogBuffer = [""];
-var RequestLogAliveOrDead = function(requestId, string, isEnd) {
-  var args = GetConsoleLogArgsForRequestIdAliveOrDead(requestId, isEnd);
+var RequestLogAliveOrDead = function(requestId, string, age) {
+  var args = GetConsoleLogArgsForRequestIdAliveOrDead(requestId, age);
   args[0] += "%c%s";
   args.push("color:black");
   args.push(string);
@@ -180,11 +191,14 @@ var RequestLogAliveOrDead = function(requestId, string, isEnd) {
     }
   }
 };  // RequestLogAliveOrDead
-var RequestLogAlive = function(requestId, string) {
-  return RequestLogAliveOrDead(requestId, string, false);
+var RequestLogStart = function(requestId, string) {
+  return RequestLogAliveOrDead(requestId, string, 0);
 };
-var RequestLogDead = function(requestId, string) {
-  return RequestLogAliveOrDead(requestId, string, true);
+var RequestLogContinue = function(requestId, string) {
+  return RequestLogAliveOrDead(requestId, string, 1);
+};
+var RequestLogEnd = function(requestId, string) {
+  return RequestLogAliveOrDead(requestId, string, 2);
 };
 var RequestLogFlush = function() {
   if (requestLogBuffer.length != 1) {
@@ -199,14 +213,6 @@ var RequestLogFlush = function() {
 //      traceStrings: an array of strings containing a trace of what happened.
 var stash = new Object;
 
-// TODO: use this to make sure that when we see things not in stash, we've NEVER seen them... then get rid of this!
-// so logic should go:
-//      if not in stash
-//        if ever seen before:
-//          alert!
-var allIdsEverSeenSet = new Set;
-var allIdsEverSeenList = [];
-
 var getHeader = function(headers, name) {
   var nameToLowerCase = name.toLowerCase();
   for (var i = 0; i < headers.length; i++) {
@@ -220,12 +226,12 @@ var setHeader = function(headers, name, value, requestIdForLogging) {
   var nameToLowerCase = name.toLowerCase();
   for (var i = 0; i < headers.length; i++) {
     if (headers[i].name.toLowerCase() === nameToLowerCase) {
-      if (verboseLevel >= 2) RequestLogAlive(requestIdForLogging, "      changing header "+EXACT(headers[i].name)+" to "+EXACT(value));
+      if (verboseLevel >= 2) RequestLogContinue(requestIdForLogging, "      changing header "+EXACT(headers[i].name)+" to "+EXACT(value));
       headers[i].value = value;
       return;
     }
   }
-  if (verboseLevel >= 2) RequestLogAlive(requestIdForLogging, "      adding header "+EXACT(name)+" : "+EXACT(value));
+  if (verboseLevel >= 2) RequestLogContinue(requestIdForLogging, "      adding header "+EXACT(name)+" : "+EXACT(value));
   headers.push({name:name, value:value});
 };  // setHeader
 
@@ -239,114 +245,97 @@ var setHeader = function(headers, name, value, requestIdForLogging) {
 // Define and install chrome.webRequest listeners.
 //
 var onBeforeRequestListener = function(details) {
-
-  if (!allIdsEverSeenSet.has(details.requestId)) {
-    allIdsEverSeenSet.add(details.requestId);
-    allIdsEverSeenList.push(details.requestId);
-  }
-
-  
   if (details.requestId in stash) {
     // This happens, on redirects (including switcheroos done by this extension and others)
+    var isContinuation = true;
   } else {
-    stash[details.requestId] = {
-      traceStrings: [],
-      urls: [],
-    };
+    stash[details.requestId] = {traceStrings: [], urls:[]};
+    var isContinuation = false;
   }
   stash[details.requestId].traceStrings.push("onBeforeRequest: method = "+EXACT(details.method)+" url = "+EXACT(details.url));
   stash[details.requestId].urls.push(details.url);
 
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "[   in onBeforeRequest listener: "+EXACT(details.method)+" "+EXACT(details.url));
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "      details = "+EXACT(details));
+  if (verboseLevel >= 2) (isContinuation ? RequestLogContinue : RequestLogStart)(details.requestId, "[   in onBeforeRequest listener: "+EXACT(details.method)+" "+EXACT(details.url));
+  if (verboseLevel >= 2) RequestLogContinue(details.requestId, "      details = "+EXACT(details));
   var answer = null;
 
   // XXX TODO: what is the most graceful way of just sending my extension a signal? can do with messages but... would be nice to just do it in the browser or something? hmm
   // can I make this request return a web page??? could do it with something obscene by sending a request to google.com and replacing the response, but... what's a better way?
   // Maybe a good question for StackOverflow.
   if (details.url === "http://heyheyhey/") {
-    if (verboseLevel >= 2) RequestLogFlush();
-    console.log("---------------------------------------------");
-    console.log(""+details.requestId+": got special request "+details.url);
-    console.log("stash = ",stash);
-    console.log("stash = "+EXACT(stash));
-    console.log("allIdsEverSeenList = "+EXACT(allIdsEverSeenList));
-    console.log("swimLaneToRequestId.length = ",swimLaneToRequestId.length);
-    console.log("swimLaneToRequestId = ",swimLaneToRequestId);
-    console.log("requestIdToSwimLane = ",requestIdToSwimLane);
-
-    // Show current status of all outstanding
+    // Show current status of all outstanding requests.
     if (verboseLevel >= 2) {
+      // we are showing swim lanes, so do it in the swim lanes
+      RequestLogFlush();
+      console.log("---------------------------------------------");
+      console.log(""+details.requestId+": got special request "+EXACT(details.url))+" to dump state";
+      console.log("swimLaneToRequestId.length = "+EXACT(swimLaneToRequestId.length));
+      console.log("swimLaneToRequestId = "+EXACT(swimLaneToRequestId));
+      console.log("requestIdToSwimLane = "+EXACT(requestIdToSwimLane));
       for (var i = 0; i < swimLaneToRequestId.length; ++i) {
         var requestId = swimLaneToRequestId[i];
         if (requestId != null) {
-          // It has a swim lane, so it should have a stash entry too
-          if (stash[requestId] === undefined) {
-            alert("chromeWebRequestExample extension: Internal error: requestId="+requestId+" has a swim lane but no stash entry?!?");
-            console.log("Internal error: requestId="+requestId+" has a swim lane but no stash entry?!?");
+          // It has a swim lane, so it should have a stash entry too... I think we create a stash entry every time we create a swim lane
+          var stashEntry = stash[requestId];
+          if (stashEntry === undefined) {
+            RequestLogContinue(requestId, " (no stash entry, I think this shouldn't happen)");
           } else {
-            RequestLogAlive(requestId, " "+EXACT(stash[requestId].urls)); // note, calling with requestId instead of details!
+            RequestLogContinue(requestId, " "+EXACT(stash[requestId].urls));
           }
         }
       }
       RequestLogFlush();
+      console.log("---------------------------------------------");
+    } else {
+      console.log("---------------------------------------------");
+      console.log(""+details.requestId+": got special request "+details.url);
+      console.log("stash = "+EXACT(stash)); // don't let console.log do it, since it will delay evaluation, losing value
+      console.log("---------------------------------------------");
     }
-    console.log("---------------------------------------------");
 
     answer = {cancel : true};
   }
 
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    out onBeforeRequest listener, returning "+EXACT(answer));
+  if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onBeforeRequest listener, returning "+EXACT(answer));
   //if (verboseLevel >= 2) RequestLogFlush();  // evidently might might be a while before more output
   return answer;
 };  // onBeforeRequestListener
 // aka requestListener
 var onBeforeSendHeadersListener = function(details) {
+  if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onBeforeSendHeaders listener: "+EXACT(details.method)+" "+EXACT(details.url));
+  if (verboseLevel >= 3) RequestLogContinue(details.requestId, "      details = "+EXACT(details));
   // empirically, we never seem to get this unless onBeforeRequestListener has been called, so don't need to check.
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onBeforeSendHeaders listener: "+EXACT(details.method)+" "+EXACT(details.url));
-  if (verboseLevel >= 3) RequestLogAlive(details.requestId, "      details = "+EXACT(details));
+  // but, check anyway.
+
+  if (!(details.requestId in stash)) {
+    stash[details.requestId] = {traceStrings: ["    onBeforeSendHeaders (request must have been created before extension started)"], urls:[details.url]};
+  }
 
   var Origin = getHeader(details.requestHeaders, "Origin");
   if (Origin != null) {
-    if (verboseLevel >= 2) RequestLogAlive(details.requestId, "      stashing request id "+details.requestId+" Origin: "+EXACT(Origin));
+    if (verboseLevel >= 2) RequestLogContinue(details.requestId, "      stashing request id "+details.requestId+" Origin: "+EXACT(Origin));
     stash[details.requestId].Origin = Origin;
   }
 
-  if (!allIdsEverSeenSet.has(details.requestId)) {
-    console.log("hey! onBeforeSendHeaders listener never saw id="+details.requestId+" before: "+details.url);
-    alert("hey! onBeforeSendHeaders listener never saw id="+details.requestId+" before: "+details.url);
-    return null;
-  }
   var answer = null;
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    out onBeforeSendHeaders listener, returning "+EXACT(answer));
+  if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onBeforeSendHeaders listener, returning "+EXACT(answer));
   return answer;
 };  // onBeforeSendHeadersListener
 var onSendHeadersListener = function(details) {
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onSendHeaders listener");
-  if (!allIdsEverSeenSet.has(details.requestId)) {
-    alert("hey! onSendHeaders listener never saw id="+details.requestId+" before: "+details.url);
-    return null;
-  }
+  if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onSendHeaders listener");
   var answer = null;
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    out onSendHeaders listener, returning "+EXACT(answer));
+  if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onSendHeaders listener, returning "+EXACT(answer));
   if (verboseLevel >= 2) RequestLogFlush();  // definitely might be a while before more output
   return answer;
 };  // onSendHeadersListener
 // aka responseListener
 var onHeadersReceivedListener = function(details) {
-/*
-  if (!(details.requestId in stash)) {
-    console.info("in onHeadersReceived for requestId="+details.requestId+" but I haven't seen it before, assuming it was initiated before this extension was loaded, ignoring it: ",details);
-    return null; // I think this is shorthand for "don't change it"
-  }
-*/
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onHeadersReceived listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode);
-  if (verboseLevel >= 3) RequestLogAlive(details.requestId, "      details = "+EXACT(details));
-  if (!allIdsEverSeenSet.has(details.requestId)) {
-    alert("hey! onHeadersReceived listener never saw id="+details.requestId+" before: details.url="+EXACT(details.url)+" details="+EXACT(details));
-    return null;
-  }
+  if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onHeadersReceived listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode);
+  if (verboseLevel >= 3) RequestLogContinue(details.requestId, "      details = "+EXACT(details));
 
+  if (!(details.requestId in stash)) {
+    stash[details.requestId] = {traceStrings: ["    onHeadersRecieved (request must have been created before extension started)"], urls:[details.url]};
+  }
   var answer = null;
   if (allowCORSFlag) {
     var Origin = stash[details.requestId].Origin;
@@ -358,71 +347,54 @@ var onHeadersReceivedListener = function(details) {
     // The following is required when using ajax with withCredentials=true, but doesn't hurt in general
     setHeader(details.responseHeaders, "Access-Control-Allow-Credentials", "true", details.requestId);
     answer = {responseHeaders: details.responseHeaders};
-    if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    out onHeadersReceived listener, returning "+Object.keys(answer.responseHeaders).length+" headers"+(verboseLevel>=3 ? ": "+EXACT(answer) : ""));
+    if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onHeadersReceived listener, returning "+Object.keys(answer.responseHeaders).length+" headers"+(verboseLevel>=3 ? ": "+EXACT(answer) : ""));
   } else {
-    if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    out onHeadersReceived listener, returning "+EXACT(answer));
+    if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onHeadersReceived listener, returning "+EXACT(answer));
   }
   //if (verboseLevel >= 2) RequestLogFlush();  // evidently might might be a while before more output
   return answer;
 };  // onHeadersReceivedListener
 var onAuthRequiredListener = function(details) {
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onAuthRequired listener");
-  if (!allIdsEverSeenSet.has(details.requestId)) {
-    alert("hey! onAuthRequired listener never saw id="+details.requestId+" before: "+details.url);
-    return null;
-  }
+  if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onAuthRequired listener");
   var answer = null;
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    out onAuthRequired listener, returning "+EXACT(answer));
+  if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onAuthRequired listener, returning "+EXACT(answer));
   return answer;
 };  // onAuthRequiredListener
 var onBeforeRedirectListener = function(details) {
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onBeforeRedirect listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode+" -> "+EXACT(details.redirectUrl));
-  if (verboseLevel >= 3) RequestLogAlive(details.requestId, "      details = "+EXACT(details));
-  if (!allIdsEverSeenSet.has(details.requestId)) {
-    alert("hey! onBeforeRedirect listener never saw id="+details.requestId+" before: "+details.url);
-    return null;
+  if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onBeforeRedirect listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode+" -> "+EXACT(details.redirectUrl));
+  if (verboseLevel >= 3) RequestLogContinue(details.requestId, "      details = "+EXACT(details));
+
+  if (!(details.requestId in stash)) {
+    stash[details.requestId] = {traceStrings: ["    onBeforeRedirect (request must have been created before extension started)"], urls:[details.url]};
+  } else {
+    stash[details.requestId].urls.push(details.url);
   }
 
-  stash[details.requestId].urls.push(details.url);
-
   var answer = null;
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    out onBeforeRedirect listener, returning "+EXACT(answer));
+  if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onBeforeRedirect listener, returning "+EXACT(answer));
   return answer;
 };  // onBeforeRedirectListener
 var onResponseStartedListener = function(details) {
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onResponseStarted listener");
-  if (!allIdsEverSeenSet.has(details.requestId)) {
-    alert("hey! onResponseStarted listener never saw id="+details.requestId+" before: "+details.url);
-    return null;
-  }
+  if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onResponseStarted listener");
   var answer = null;
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    out onResponseStarted listener, returning "+EXACT(answer));
+  if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onResponseStarted listener, returning "+EXACT(answer));
   return answer;
 };  // onResponseStartedListener
 var onCompletedListener = function(details) {
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onCompleted listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode);
-  if (verboseLevel >= 3) RequestLogAlive(details.requestId, "      details = "+EXACT(details));
-  if (!allIdsEverSeenSet.has(details.requestId)) {
-    alert("hey! onCompleted listener never saw id="+details.requestId+" before: "+details.url+"(maybe initiated before this extension was loaded?)");
-  } else {
-    var answer = null;
-    delete stash[details.requestId];
-  }
-
-  if (verboseLevel >= 2) RequestLogDead(details.requestId, "]   out onCompleted listener, returning "+EXACT(answer));
+  if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onCompleted listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode);
+  if (verboseLevel >= 3) RequestLogContinue(details.requestId, "      details = "+EXACT(details));
+  delete stash[details.requestId];  // whether or not it existed
+  var answer = null;
+  if (verboseLevel >= 2) RequestLogEnd(details.requestId, "]   out onCompleted listener, returning "+EXACT(answer));
   if (verboseLevel >= 2) RequestLogFlush();  // definitely might be a while before more output
   return answer;
 };  // onCompletedListener
 var onErrorOccurredListener = function(details) {
-  if (verboseLevel >= 2) RequestLogAlive(details.requestId, "    in onErrorOccurred listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode);
-  if (verboseLevel >= 3) RequestLogAlive(details.requestId, "      details = "+EXACT(details));
-  if (!allIdsEverSeenSet.has(details.requestId)) {
-    alert("hey! onErrorOccurred listener never saw id="+details.requestId+" before: "+details.url+"(maybe initiated before this extension was loaded?)");
-  } else {
-    var answer = null;
-    delete stash[details.requestId];
-  }
-  if (verboseLevel >= 2) RequestLogDead(details.requestId, "]   out onErrorOccurred listener, returning "+EXACT(answer));
+  if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onErrorOccurred listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode);
+  if (verboseLevel >= 3) RequestLogContinue(details.requestId, "      details = "+EXACT(details));
+  delete stash[details.requestId];  // whether or not it existed
+  var answer = null;
+  if (verboseLevel >= 2) RequestLogEnd(details.requestId, "]   out onErrorOccurred listener, returning "+EXACT(answer));
   if (verboseLevel >= 2) RequestLogFlush();  // definitely might be a while before more output
   return answer;
 };  // onErrorOccurredListener
