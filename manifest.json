@@ -11,6 +11,7 @@
     "permissions": [
 	"webRequest",
 	"webRequestBlocking",
+        "cookies",
 	"*://*/*"
     ],
     "manifest_version": 2

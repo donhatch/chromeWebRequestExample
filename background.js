@@ -3,10 +3,12 @@
 //        oh hmm, it's ajax.  request id does seem to be from before I stared but... Should look into how this happens.
 //
 // TODO: keep record of unexpected events (like the pr.comet.yahoo.com stuff?)
-// TODO: maybe make an actual flush timer?
+// TODO: maybe make an actual flush timer?  (what did I mean?)
 // TODO: stackoverflow question: "what's the most graceful way to make chrome.webRequest return a synthetic response?"
 
 var verboseLevel = 2; // 0: nothing, 1: extension init and errors, 2: every request, nicely formatted, 3: lots of details
+var monitorCookiesToo = false;
+var showCORSfriendlySites = false; // XXX hack at the moment
 
 var allowCORSFlag = false; // if set, try to allow CORS wherever possible (also subject to whitelist)
 var allowCORSWhitelistFunction = function(url) {
@@ -18,6 +20,8 @@ var flushAfterEveryLogMessage = false; // can set this to true here or when some
 
 if (verboseLevel >= 1) console.log("    in background.js");
 if (verboseLevel >= 1) console.log("      verboseLevel = "+EXACT(verboseLevel)+(verboseLevel<2?" (set to >=2 in source and reload extension to show flow graph of every request)":""));
+if (verboseLevel >= 1) console.log("      monitorCookiesToo = "+EXACT(monitorCookiesToo));
+if (verboseLevel >= 1) console.log("      showCORSfriendlySites = "+EXACT(showCORSfriendlySites));
 if (verboseLevel >= 1) console.log("      allowCORSFlag = "+EXACT(allowCORSFlag));
 
 // box drawing characters: https://en.wikipedia.org/wiki/Box-drawing_character
@@ -50,6 +54,8 @@ var colors = [
     '#80f', // purple
     '#f0f', // magenta
 ];
+
+var knownCORSfriendlySites = new Set(); // only used if showCORSfriendlySites
 
 var swimLaneToRequestId = [];
 var requestIdToSwimLane = {};
@@ -86,7 +92,7 @@ var now0 = Date.now();
 
 // age=0 means start, age=1 means continue, age=2 means end
 var GetConsoleLogArgsForRequestIdAliveOrDead = function(requestId, age) {
-  var verboseLevel = 0;
+  var verboseLevel = 0;  // XXX should rename this, it's not the global one
   if (verboseLevel >= 1) console.log("in GetConsoleLogArgsForRequestIdAliveOrDead(requestId="+EXACT(requestId)+", age="+EXACT(age)+")");
   var swimLane = GetSwimLane(requestId);
   var hadSwimLane = (swimLane !== undefined);
@@ -342,6 +348,38 @@ var onHeadersReceivedListener = function(details) {
   if (!(details.requestId in stash)) {
     stash[details.requestId] = {traceStrings: ["    onHeadersRecieved (request must have been created before extension started)"], urls:[details.url]};
   }
+
+  if (showCORSfriendlySites) {
+    let friendlyHeaders = details.responseHeaders.filter(function(nameValue) { return nameValue.name.toLowerCase().startsWith("access-control-"); });
+    if (true || friendlyHeaders.length > 0) {  // XXX HACK
+      friendlyHeaders = friendlyHeaders.map(function(nameValue) { return [nameValue.name, nameValue.value]; });
+      let key = EXACT(stash[details.requestId].urls);
+      if (key.indexOf('uberproxy') != -1) { // XXX HACK
+        if (verboseLevel >= 2) {
+          // we are showing swim lanes, so do it in the swim lanes, whether or not seen before.
+          RequestLogFlush();
+          if (friendlyHeaders.length > 0) {
+            RequestLogContinue(details.requestId, "      HEY! "+key+" might be CORS-friendly! friendlyHeaders="+JSON.stringify(friendlyHeaders));
+          } else {
+            RequestLogContinue(details.requestId, "      HEY! "+key+" looks interesting!  friendlyHeaders="+JSON.stringify(friendlyHeaders));
+          }
+        } else {
+          // No swim lanes. Only show if haven't shown before.
+          if (!knownCORSfriendlySites.has(key)) {
+            knownCORSfriendlySites.add(key);
+            if (friendlyHeaders.length > 0) {
+              console.log("      HEY! "+key+" might be CORS-friendly! friendlyHeaders="+JSON.stringify(friendlyHeaders));
+            } else {
+              console.log("      HEY! "+key+" looks interesting! friendlyHeaders="+JSON.stringify(friendlyHeaders));
+            }
+          } else {
+            //console.log("      (hey! "+key+" might be CORS-friendly! friendlyHeaders="+JSON.stringify(friendlyHeaders)+")");
+          }
+        }
+      }
+    }
+  }
+
   var answer = null;
   if (allowCORSFlag) {
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "      details.url = "+EXACT(details.url));
@@ -445,5 +483,32 @@ chrome.runtime.onInstalled.addListener(function() {
   onStartupOrOnInstalledListener();
   if (verboseLevel >= 1) console.log("        out onInstalled listener");
 });  // onInstalled listener
+
+if (monitorCookiesToo) {
+  //
+  // https://developer.chrome.com/extensions/cookies
+  // https://developer.chrome.com/extensions/samples#search:cookies
+  //
+  chrome.cookies.onChanged.addListener(function(info) {
+    //console.log("in cookie onChanged listener(cause="+EXACT(info.cause)+")");
+    //console.log("  info = "+EXACT(info));
+    //console.log("  info.cause = "+EXACT(info.cause)); // supposedly can be one of "evicted", "expired", "explicit", "expired_overwrite", or "overwrite"
+    //console.log("  info.cookie = "+EXACT(info.cookie));
+    //console.log("  info.cookie.domain = "+EXACT(info.cookie.domain));
+    //console.log("  info.cookie.name = "+EXACT(info.cookie.name));
+    //console.log("  info.cookie.value = "+EXACT(info.cookie.value));
+    //console.log("  info.removed = "+EXACT(info.removed));
+    if (verboseLevel >= 2) RequestLogFlush();
+    if (info.removed) {
+      console.log("  COOKIE REMOVED (cause="+EXACT(info.cause)+"): domain="+EXACT(info.cookie.domain)+" name="+EXACT(info.cookie.name)+" cookie=",info.cookie);
+    } else {
+      console.log("  COOKIE ADDED OR CHANGED (cause="+EXACT(info.cause)+"): domain="+EXACT(info.cookie.domain)+" name="+EXACT(info.cookie.name)+" cookie=",info.cookie);
+    }
+    //console.log("      info.cookie = "+EXACT(info.cookie));
+    //console.log("out cookie onChanged listener(cause="+EXACT(info.cause)+")");
+  });
+}
+
+
 
 if (verboseLevel >= 1) console.log("    out background.js");
