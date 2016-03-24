@@ -6,12 +6,18 @@
 // TODO: maybe make an actual flush timer?
 // TODO: stackoverflow question: "what's the most graceful way to make chrome.webRequest return a synthetic response?"
 
-var verboseLevel = 1; // 0: nothing, 1: extension init and errors, 2: every request, 3: lots of details
-var allowCORSFlag = false; // if set, try to allow CORS wherever possible
+var verboseLevel = 2; // 0: nothing, 1: extension init and errors, 2: every request, nicely formatted, 3: lots of details
+
+var allowCORSFlag = false; // if set, try to allow CORS wherever possible (also subject to whitelist)
+var allowCORSWhitelistFunction = function(url) {
+  return true;
+  //return url.indexOf('http://0.keyhole_maps.khserver.keyhole.sb.borg.google.com:8125') == 0;
+};
+
 var flushAfterEveryLogMessage = false; // can set this to true here or when something weird happens, for better debuggability
 
 if (verboseLevel >= 1) console.log("    in background.js");
-if (verboseLevel >= 1) console.log("      verboseLevel = "+EXACT(verboseLevel));
+if (verboseLevel >= 1) console.log("      verboseLevel = "+EXACT(verboseLevel)+(verboseLevel<2?" (set to >=2 in source and reload extension to show flow graph of every request)":""));
 if (verboseLevel >= 1) console.log("      allowCORSFlag = "+EXACT(allowCORSFlag));
 
 // box drawing characters: https://en.wikipedia.org/wiki/Box-drawing_character
@@ -338,17 +344,22 @@ var onHeadersReceivedListener = function(details) {
   }
   var answer = null;
   if (allowCORSFlag) {
-    var Origin = stash[details.requestId].Origin;
-    if (Origin !== undefined) {
-      //setHeader(details.responseHeaders, "Access-Control-Allow-Origin", "*", details.requestId); // simplistic extension
-      setHeader(details.responseHeaders, "Access-Control-Allow-Origin", Origin, details.requestId); // smart extension
+    if (verboseLevel >= 2) RequestLogContinue(details.requestId, "      details.url = "+EXACT(details.url));
+    if (allowCORSWhitelistFunction(details.url)) {
+      var Origin = stash[details.requestId].Origin;
+      if (Origin !== undefined) {
+        //setHeader(details.responseHeaders, "Access-Control-Allow-Origin", "*", details.requestId); // simplistic extension
+        setHeader(details.responseHeaders, "Access-Control-Allow-Origin", Origin, details.requestId); // smart extension
+      } else {
+        setHeader(details.responseHeaders, "Access-Control-Allow-Origin", "*", details.requestId);
+      }
+      // The following is required when using ajax with withCredentials=true, but doesn't hurt in general
+      setHeader(details.responseHeaders, "Access-Control-Allow-Credentials", "true", details.requestId);
+      answer = {responseHeaders: details.responseHeaders};
+      if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onHeadersReceived listener, allowCORSFlag and passed whitelist, returning "+Object.keys(answer.responseHeaders).length+" headers"+(verboseLevel>=3 ? ": "+EXACT(answer) : ""));
     } else {
-      setHeader(details.responseHeaders, "Access-Control-Allow-Origin", "*", details.requestId);
+      if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onHeadersReceived listener, allowCORSFlag but didn't pass whitelist, returning "+EXACT(answer));
     }
-    // The following is required when using ajax with withCredentials=true, but doesn't hurt in general
-    setHeader(details.responseHeaders, "Access-Control-Allow-Credentials", "true", details.requestId);
-    answer = {responseHeaders: details.responseHeaders};
-    if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onHeadersReceived listener, returning "+Object.keys(answer.responseHeaders).length+" headers"+(verboseLevel>=3 ? ": "+EXACT(answer) : ""));
   } else {
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onHeadersReceived listener, returning "+EXACT(answer));
   }

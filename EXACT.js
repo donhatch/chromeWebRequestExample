@@ -1,3 +1,5 @@
+// TODO: can some or all of this be replaced by JSON.stringify?
+
 // from http://gfxmonk.net/dist/0install/repr.js.xml ...
 // XXX get rid of these I think, once I understand them
 if(Object.hasOwnProperty('getPrototypeOf')) {
