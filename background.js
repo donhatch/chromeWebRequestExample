@@ -1,14 +1,21 @@
+// To control it, currently:
+//    - hard-code values of the first few variables below, then hit ctrl-r in background window to reload
+//    - http://heyheyhey causes dump of in-flight requests (if verboseLevel>=2)
+//    - http://heyheyhey?verboseLevel=<n> causes verboseLevel to be changed to <n>
 // Notes:
 //	- unexpected onHeadersReceived of https://pr.comet.yahoo.com from time to time.
-//        oh hmm, it's ajax.  request id does seem to be from before I stared but... Should look into how this happens.
+//        oh hmm, it's ajax.  request id does seem to be from before I started but... Should look into how this happens.
 //
 // TODO: keep record of unexpected events (like the pr.comet.yahoo.com stuff?)
 // TODO: maybe make an actual flush timer?  (what did I mean?)
 // TODO: stackoverflow question: "what's the most graceful way to make chrome.webRequest return a synthetic response?"
+//       See details down where I handle "heyheyhey" down below.
+// TODO: use strict mode
+// TODO: use "let" instead of "var"
 
-var verboseLevel = 2; // 0: nothing, 1: extension init and errors, 2: every request, nicely formatted, 3: lots of details
-var monitorCookiesToo = false;
-var showCORSfriendlySites = false; // XXX hack at the moment
+var verboseLevel = 3; // 0: nothing, 1: extension init and errors, 2: every request, nicely formatted, 3: lots of details like headers
+var monitorCookiesToo = true;
+var showCORSfriendlySites = true; // XXX hack at the moment
 
 var allowCORSFlag = false; // if set, try to allow CORS wherever possible (also subject to whitelist)
 var allowCORSWhitelistFunction = function(url) {
@@ -274,7 +281,19 @@ var onBeforeRequestListener = function(details) {
   // XXX TODO: what is the most graceful way of just sending my extension a signal? can do with messages but... would be nice to just do it in the browser or something? hmm
   // can I make this request return a web page??? could do it with something obscene by sending a request to google.com and replacing the response, but... what's a better way?
   // Maybe a good question for StackOverflow.
-  if (details.url === "http://heyheyhey/") {
+  if (details.url.startsWith("http://heyheyhey/")) {
+
+    // Parse url params out of it.
+    // For now, just do really ad-hoc matching.
+    if (true) {
+      var match = /.*verboseLevel=(\d+).*/.exec(details.url); // or could use details.url.match(regex)
+      console.log("match = "+JSON.stringify(match));
+      if (match !== null) {
+         verboseLevel = parseInt(match[1], 10);
+         console.log("verboseLevel changed to "+JSON.stringify(verboseLevel));
+      }
+    }
+
     // Show current status of all outstanding requests.
     if (verboseLevel >= 2) {
       // we are showing swim lanes, so do it in the swim lanes
@@ -305,6 +324,13 @@ var onBeforeRequestListener = function(details) {
       console.log("---------------------------------------------");
     }
 
+    // Just cancel it for now.
+    // This appears in our gui as an onErrorOccurred event with "error" field "net::ERR_BLOCKED_BY_CLIENT",
+    // and appears in the chrome tab as:
+    //     heyheyhey is blocked
+    //     Requests to the server have been blocked by an extension.
+    //     Try disabling your extensions.
+    //     ERR_BLOCKED_BY_CLIENT
     answer = {cancel : true};
   }
 
