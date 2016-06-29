@@ -21,17 +21,17 @@
   //bar = 345; //ReferenceError: bar is not defined  (if uncommented, since strict mode)
 
 
-  var verboseLevel = 3; // 0: nothing, 1: extension init and errors, 2: every request, nicely formatted, 3: lots of details like headers
-  var monitorCookiesToo = true;
-  var showCORSfriendlySites = true; // XXX hack at the moment
+  let verboseLevel = 3; // 0: nothing, 1: extension init and errors, 2: every request, nicely formatted, 3: lots of details like headers
+  let monitorCookiesToo = true;
+  let showCORSfriendlySites = true; // XXX hack at the moment
 
-  var allowCORSFlag = false; // if set, try to allow CORS wherever possible (also subject to whitelist)
-  var allowCORSWhitelistFunction = function(url) {
+  let allowCORSFlag = false; // if set, try to allow CORS wherever possible (also subject to whitelist)
+  let allowCORSWhitelistFunction = function(url) {
     return true;
     //return url.indexOf('http://0.keyhole_maps.khserver.keyhole.sb.borg.google.com:8125') == 0;
   };
 
-  var flushAfterEveryLogMessage = false; // can set this to true here or when something weird happens, for better debuggability
+  let flushAfterEveryLogMessage = false; // can set this to true here or when something weird happens, for better debuggability
 
   if (verboseLevel >= 1) console.log("    in background.js");
   if (verboseLevel >= 1) console.log("      verboseLevel = "+EXACT(verboseLevel)+(verboseLevel<2?" (set to >=2 in source and reload extension to show flow graph of every request)":""));
@@ -40,26 +40,26 @@
   if (verboseLevel >= 1) console.log("      allowCORSFlag = "+EXACT(allowCORSFlag));
 
   // box drawing characters: https://en.wikipedia.org/wiki/Box-drawing_character
-  var BOX_NW =    '\u250F';
-  var BOX_HORIZ = '\u2501';
-  var BOX_NE =    '\u2513';
-  var BOX_VERT =  '\u2503';
-  var BOX_SW =    '\u2517';
-  var BOX_SE =    '\u251B';
-  var BOX_W =     '\u2523'; // W wall with spike pointing E
-  var BOX_N =     '\u2533'; // N wall with spike pointing S
+  let BOX_NW =    '\u250F';
+  let BOX_HORIZ = '\u2501';
+  let BOX_NE =    '\u2513';
+  let BOX_VERT =  '\u2503';
+  let BOX_SW =    '\u2517';
+  let BOX_SE =    '\u251B';
+  let BOX_W =     '\u2523'; // W wall with spike pointing E
+  let BOX_N =     '\u2533'; // N wall with spike pointing S
 
-  var BOX_NW_FAINT =    '\u250C';
-  var BOX_HORIZ_FAINT = '\u2500';
-  var BOX_NE_FAINT =    '\u2510';
-  var BOX_VERT_FAINT =  '\u2502';
-  var BOX_SW_FAINT =    '\u2514';
-  var BOX_SE_FAINT =    '\u2518';
-  var BOX_W_FAINT =     '\u251C'; // W wall with spike pointing E
-  var BOX_N_FAINT =     '\u252C'; // N wall with spike pointing S
+  let BOX_NW_FAINT =    '\u250C';
+  let BOX_HORIZ_FAINT = '\u2500';
+  let BOX_NE_FAINT =    '\u2510';
+  let BOX_VERT_FAINT =  '\u2502';
+  let BOX_SW_FAINT =    '\u2514';
+  let BOX_SE_FAINT =    '\u2518';
+  let BOX_W_FAINT =     '\u251C'; // W wall with spike pointing E
+  let BOX_N_FAINT =     '\u252C'; // N wall with spike pointing S
 
 
-  var colors = [
+  let colors = [
       '#f00', // red
       '#f80', // orange
       '#cc0', // dark yellow
@@ -70,20 +70,20 @@
       '#f0f', // magenta
   ];
 
-  var knownCORSfriendlySites = new Set(); // only used if showCORSfriendlySites
+  let knownCORSfriendlySites = new Set(); // only used if showCORSfriendlySites
 
-  var swimLaneToRequestId = [];
-  var requestIdToSwimLane = {};
+  let swimLaneToRequestId = [];
+  let requestIdToSwimLane = {};
 
   // These functions are only used by GetConsoleLogArgsForRequestIdAliveOrDead
-  var GetSwimLane = function(requestId) {
+  let GetSwimLane = function(requestId) {
     return requestIdToSwimLane[requestId]; // can be undefined
   };
-  var AllocateSwimLane = function(requestId) {
+  let AllocateSwimLane = function(requestId) {
     if (requestId in requestIdToSwimLane) {
       return requestIdToSwimLane[requestId];
     }
-    var swimLane;
+    let swimLane;
     for (swimLane = 0; swimLane < swimLaneToRequestId.length; ++swimLane) {
       if (swimLaneToRequestId[swimLane] === null) {
         swimLaneToRequestId[swimLane] = requestId;
@@ -96,32 +96,32 @@
     requestIdToSwimLane[requestId] = swimLane;
     return swimLane;
   };
-  var ReleaseSwimLane = function(requestId) {
-    var swimLane = requestIdToSwimLane[requestId];
+  let ReleaseSwimLane = function(requestId) {
+    let swimLane = requestIdToSwimLane[requestId];
     delete requestIdToSwimLane[requestId];
     swimLaneToRequestId[swimLane] = null;
   };
 
-  var now0 = Date.now();
+  let now0 = Date.now();
 
 
   // age=0 means start, age=1 means continue, age=2 means end
-  var GetConsoleLogArgsForRequestIdAliveOrDead = function(requestId, age) {
-    var verboseLevel = 0;  // XXX should rename this, it's not the global one
+  let GetConsoleLogArgsForRequestIdAliveOrDead = function(requestId, age) {
+    let verboseLevel = 0;  // XXX should rename this, it's not the global one
     if (verboseLevel >= 1) console.log("in GetConsoleLogArgsForRequestIdAliveOrDead(requestId="+EXACT(requestId)+", age="+EXACT(age)+")");
-    var swimLane = GetSwimLane(requestId);
-    var hadSwimLane = (swimLane !== undefined);
+    let swimLane = GetSwimLane(requestId);
+    let hadSwimLane = (swimLane !== undefined);
     if (!hadSwimLane) {
       swimLane = AllocateSwimLane(requestId);
     }
-    var maxSwimLane = swimLaneToRequestId.length - 1;
+    let maxSwimLane = swimLaneToRequestId.length - 1;
     while (maxSwimLane >= 0 && swimLaneToRequestId[maxSwimLane] == null) {
       maxSwimLane--;
     }
 
-    var myColor = colors[requestId % colors.length];
+    let myColor = colors[requestId % colors.length];
 
-    var answer = [""];
+    let answer = [""];
 
     if (age != 0 && !hadSwimLane) {
       answer[0] += "%c%s";
@@ -135,40 +135,41 @@
       // Arguably we should be printing the timestamp of the request when we have it...
       answer[0] += "%c%s";
       answer.push("color:black");
-      var ms = Date.now() - now0;
-      var s = ms / 1000.;
+      let ms = Date.now() - now0;
+      let s = ms / 1000.;
       s = s.toFixed(3);
       s = ("                 "+s).slice(-10); // left-pad to 10 chars
       answer.push(s + " ");
     }
 
-    var myChar = (age==0 ? BOX_NW : age==1 ? BOX_W : BOX_SW);
-    for (var i = 0; i <= maxSwimLane; ++i) {
-      var r = swimLaneToRequestId[i];
+    let myChar = (age==0 ? BOX_NW : age==1 ? BOX_W : BOX_SW);
+    for (let i = 0; i <= maxSwimLane; ++i) {
+      let r = swimLaneToRequestId[i];
+      let color, c;
 
       if (r === null) {
         if (i < swimLane) {
-          var color = "black";
-          var c = " ";
+          color = "black";
+          c = " ";
         } else {
-          var color = myColor;
-          var c = BOX_HORIZ;
+          color = myColor;
+          c = BOX_HORIZ;
         }
       } else {
         if (i < swimLane) {
-          var color = colors[r % colors.length];
-          var c = BOX_VERT;
+          color = colors[r % colors.length];
+          c = BOX_VERT;
         } else if (i == swimLane) {
-          var color = myColor;
-          var c = myChar;
+          color = myColor;
+          c = myChar;
         } else {
-          var verticalTakesPrecedence = true; // can hard-code this either way
+          let verticalTakesPrecedence = true; // can hard-code this either way
           if (verticalTakesPrecedence) {
-            var color = colors[r % colors.length];
-            var c = BOX_VERT;
+            color = colors[r % colors.length];
+            c = BOX_VERT;
           } else {
-            var color = myColor;
-            var c = BOX_HORIZ;
+            color = myColor;
+            c = BOX_HORIZ;
           }
         }
       }
@@ -191,9 +192,9 @@
   // Example of reliably coloring console.log output:
   //   console.log("%c%s%c%s", "color:red;font-weight:bold", "this comes out in bold red", "color:green", " and this comes out in normal green");
   // details.requestId is used, and maybe detail.url for debugging weirdness.
-  var requestLogBuffer = [""];
-  var RequestLogAliveOrDead = function(requestId, string, age) {
-    var args = GetConsoleLogArgsForRequestIdAliveOrDead(requestId, age);
+  let requestLogBuffer = [""];
+  let RequestLogAliveOrDead = function(requestId, string, age) {
+    let args = GetConsoleLogArgsForRequestIdAliveOrDead(requestId, age);
     args[0] += "%c%s";
     args.push("color:black");
     args.push(string);
@@ -206,7 +207,7 @@
         requestLogBuffer[requestLogBuffer.length-1] += "\n";
       }
       requestLogBuffer[0] += args[0];
-      for (var i = 1; i < args.length; ++i) { // skip 0
+      for (let i = 1; i < args.length; ++i) { // skip 0
         requestLogBuffer.push(args[i]);
       }
       if (false) { // set to true to debug what's taking a long time and what isn't
@@ -218,16 +219,16 @@
       }
     }
   };  // RequestLogAliveOrDead
-  var RequestLogStart = function(requestId, string) {
+  let RequestLogStart = function(requestId, string) {
     return RequestLogAliveOrDead(requestId, string, 0);
   };
-  var RequestLogContinue = function(requestId, string) {
+  let RequestLogContinue = function(requestId, string) {
     return RequestLogAliveOrDead(requestId, string, 1);
   };
-  var RequestLogEnd = function(requestId, string) {
+  let RequestLogEnd = function(requestId, string) {
     return RequestLogAliveOrDead(requestId, string, 2);
   };
-  var RequestLogFlush = function() {
+  let RequestLogFlush = function() {
     if (requestLogBuffer.length != 1) {
       console.log.apply(console, requestLogBuffer);
       requestLogBuffer = [""];
@@ -238,20 +239,20 @@
   // a dictionary with the following:
   //      Origin: value of "Origin:" header if any
   //      traceStrings: an array of strings containing a trace of what happened.
-  var stash = new Object;
+  let stash = new Object;
 
-  var getHeader = function(headers, name) {
-    var nameToLowerCase = name.toLowerCase();
-    for (var i = 0; i < headers.length; i++) {
+  let getHeader = function(headers, name) {
+    let nameToLowerCase = name.toLowerCase();
+    for (let i = 0; i < headers.length; i++) {
       if (headers[i].name.toLowerCase() === nameToLowerCase) {
         return headers[i].value;
       }
     }
     return null;
   };  // getHeader
-  var setHeader = function(headers, name, value, requestIdForLogging) {
-    var nameToLowerCase = name.toLowerCase();
-    for (var i = 0; i < headers.length; i++) {
+  let setHeader = function(headers, name, value, requestIdForLogging) {
+    let nameToLowerCase = name.toLowerCase();
+    for (let i = 0; i < headers.length; i++) {
       if (headers[i].name.toLowerCase() === nameToLowerCase) {
         if (verboseLevel >= 2) RequestLogContinue(requestIdForLogging, "      changing header "+EXACT(headers[i].name)+" to "+EXACT(value));
         headers[i].value = value;
@@ -271,20 +272,21 @@
   //
   // Define and install chrome.webRequest listeners.
   //
-  var onBeforeRequestListener = function(details) {
+  let onBeforeRequestListener = function(details) {
+    let isContinuation;
     if (details.requestId in stash) {
       // This happens, on redirects (including switcheroos done by this extension and others)
-      var isContinuation = true;
+      isContinuation = true;
     } else {
       stash[details.requestId] = {traceStrings: [], urls:[]};
-      var isContinuation = false;
+      isContinuation = false;
     }
     stash[details.requestId].traceStrings.push("onBeforeRequest: method = "+EXACT(details.method)+" url = "+EXACT(details.url));
     stash[details.requestId].urls.push(details.url);
 
     if (verboseLevel >= 2) (isContinuation ? RequestLogContinue : RequestLogStart)(details.requestId, "[   in onBeforeRequest listener: "+EXACT(details.method)+" "+EXACT(details.url));
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "      details = "+EXACT(details));
-    var answer = null;
+    let answer = null;
 
     // XXX TODO: what is the most graceful way of just sending my extension a signal? can do with messages but... would be nice to just do it in the browser or something? hmm
     // can I make this request return a web page??? could do it with something obscene by sending a request to google.com and replacing the response, but... what's a better way?
@@ -294,7 +296,7 @@
       // Parse url params out of it.
       // For now, just do really ad-hoc matching.
       if (true) {
-        var match = /.*verboseLevel=(\d+).*/.exec(details.url); // or could use details.url.match(regex)
+        let match = /.*verboseLevel=(\d+).*/.exec(details.url); // or could use details.url.match(regex)
         console.log("match = "+JSON.stringify(match));
         if (match !== null) {
            verboseLevel = parseInt(match[1], 10);
@@ -311,11 +313,11 @@
         console.log("swimLaneToRequestId.length = "+EXACT(swimLaneToRequestId.length));
         console.log("swimLaneToRequestId = "+EXACT(swimLaneToRequestId));
         console.log("requestIdToSwimLane = "+EXACT(requestIdToSwimLane));
-        for (var i = 0; i < swimLaneToRequestId.length; ++i) {
-          var requestId = swimLaneToRequestId[i];
+        for (let i = 0; i < swimLaneToRequestId.length; ++i) {
+          let requestId = swimLaneToRequestId[i];
           if (requestId != null) {
             // It has a swim lane, so it should have a stash entry too... I think we create a stash entry every time we create a swim lane
-            var stashEntry = stash[requestId];
+            let stashEntry = stash[requestId];
             if (stashEntry === undefined) {
               RequestLogContinue(requestId, " (no stash entry, I think this shouldn't happen)");
             } else {
@@ -347,7 +349,7 @@
     return answer;
   };  // onBeforeRequestListener
   // aka requestListener
-  var onBeforeSendHeadersListener = function(details) {
+  let onBeforeSendHeadersListener = function(details) {
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onBeforeSendHeaders listener: "+EXACT(details.method)+" "+EXACT(details.url));
     if (verboseLevel >= 3) RequestLogContinue(details.requestId, "      details = "+EXACT(details));
     // empirically, we never seem to get this unless onBeforeRequestListener has been called, so don't need to check.
@@ -357,25 +359,25 @@
       stash[details.requestId] = {traceStrings: ["    onBeforeSendHeaders (request must have been created before extension started)"], urls:[details.url]};
     }
 
-    var Origin = getHeader(details.requestHeaders, "Origin");
+    let Origin = getHeader(details.requestHeaders, "Origin");
     if (Origin != null) {
       if (verboseLevel >= 2) RequestLogContinue(details.requestId, "      stashing request id "+details.requestId+" Origin: "+EXACT(Origin));
       stash[details.requestId].Origin = Origin;
     }
 
-    var answer = null;
+    let answer = null;
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onBeforeSendHeaders listener, returning "+EXACT(answer));
     return answer;
   };  // onBeforeSendHeadersListener
-  var onSendHeadersListener = function(details) {
+  let onSendHeadersListener = function(details) {
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onSendHeaders listener");
-    var answer = null;
+    let answer = null;
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onSendHeaders listener, returning "+EXACT(answer));
     if (verboseLevel >= 2) RequestLogFlush();  // definitely might be a while before more output
     return answer;
   };  // onSendHeadersListener
   // aka responseListener
-  var onHeadersReceivedListener = function(details) {
+  let onHeadersReceivedListener = function(details) {
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onHeadersReceived listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode);
     if (verboseLevel >= 3) RequestLogContinue(details.requestId, "      details = "+EXACT(details));
 
@@ -414,11 +416,11 @@
       }
     }
 
-    var answer = null;
+    let answer = null;
     if (allowCORSFlag) {
       if (verboseLevel >= 2) RequestLogContinue(details.requestId, "      details.url = "+EXACT(details.url));
       if (allowCORSWhitelistFunction(details.url)) {
-        var Origin = stash[details.requestId].Origin;
+        let Origin = stash[details.requestId].Origin;
         if (Origin !== undefined) {
           //setHeader(details.responseHeaders, "Access-Control-Allow-Origin", "*", details.requestId); // simplistic extension
           setHeader(details.responseHeaders, "Access-Control-Allow-Origin", Origin, details.requestId); // smart extension
@@ -438,13 +440,13 @@
     //if (verboseLevel >= 2) RequestLogFlush();  // evidently might might be a while before more output
     return answer;
   };  // onHeadersReceivedListener
-  var onAuthRequiredListener = function(details) {
+  let onAuthRequiredListener = function(details) {
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onAuthRequired listener");
-    var answer = null;
+    let answer = null;
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onAuthRequired listener, returning "+EXACT(answer));
     return answer;
   };  // onAuthRequiredListener
-  var onBeforeRedirectListener = function(details) {
+  let onBeforeRedirectListener = function(details) {
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onBeforeRedirect listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode+" -> "+EXACT(details.redirectUrl));
     if (verboseLevel >= 3) RequestLogContinue(details.requestId, "      details = "+EXACT(details));
 
@@ -454,30 +456,30 @@
       stash[details.requestId].urls.push(details.url);
     }
 
-    var answer = null;
+    let answer = null;
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onBeforeRedirect listener, returning "+EXACT(answer));
     return answer;
   };  // onBeforeRedirectListener
-  var onResponseStartedListener = function(details) {
+  let onResponseStartedListener = function(details) {
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onResponseStarted listener");
-    var answer = null;
+    let answer = null;
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    out onResponseStarted listener, returning "+EXACT(answer));
     return answer;
   };  // onResponseStartedListener
-  var onCompletedListener = function(details) {
+  let onCompletedListener = function(details) {
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onCompleted listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode);
     if (verboseLevel >= 3) RequestLogContinue(details.requestId, "      details = "+EXACT(details));
     delete stash[details.requestId];  // whether or not it existed
-    var answer = null;
+    let answer = null;
     if (verboseLevel >= 2) RequestLogEnd(details.requestId, "]   out onCompleted listener, returning "+EXACT(answer));
     if (verboseLevel >= 2) RequestLogFlush();  // definitely might be a while before more output
     return answer;
   };  // onCompletedListener
-  var onErrorOccurredListener = function(details) {
+  let onErrorOccurredListener = function(details) {
     if (verboseLevel >= 2) RequestLogContinue(details.requestId, "    in onErrorOccurred listener: "+EXACT(details.method)+" "+EXACT(details.url)+" -> "+details.statusCode);
     if (verboseLevel >= 3) RequestLogContinue(details.requestId, "      details = "+EXACT(details));
     delete stash[details.requestId];  // whether or not it existed
-    var answer = null;
+    let answer = null;
     if (verboseLevel >= 2) RequestLogEnd(details.requestId, "]   out onErrorOccurred listener, returning "+EXACT(answer));
     if (verboseLevel >= 2) RequestLogFlush();  // definitely might be a while before more output
     return answer;
@@ -500,7 +502,7 @@
   //
   // Define and install chrome.runtime listeners.
   //
-  var onStartupOrOnInstalledListener = function() {
+  let onStartupOrOnInstalledListener = function() {
   };  // onStartupOrOnInstalledListener
 
   // happens on browser start
