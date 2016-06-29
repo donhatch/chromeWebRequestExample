@@ -10,7 +10,6 @@
 // TODO: maybe make an actual flush timer?  (what did I mean?)
 // TODO: stackoverflow question: "what's the most graceful way to make chrome.webRequest return a synthetic response?"
 //       See details down where I handle "heyheyhey" down below.
-// TODO: use "let" instead of "var"
 
 
 // Per http://stackoverflow.com/questions/24369328/how-to-use-strict-mode-in-chrome-javascript-console,
