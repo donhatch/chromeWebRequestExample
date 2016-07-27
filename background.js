@@ -20,7 +20,7 @@
   //bar = 345; //ReferenceError: bar is not defined  (if uncommented, since strict mode)
 
 
-  let verboseLevel = 3; // 0: nothing, 1: extension init and errors, 2: every request, nicely formatted, 3: lots of details like headers
+  let verboseLevel = 2; // 0: nothing, 1: extension init and errors, 2: every request, nicely formatted, 3: lots of details like headers
   let monitorCookiesToo = true;
   let showCORSfriendlySites = true; // XXX hack at the moment
 
@@ -58,6 +58,8 @@
   let BOX_N_FAINT =     '\u252C'; // N wall with spike pointing S
 
 
+  // secret way to get colors in console.log:
+  //     console.log("this should be black, %c%s%c%s", "color:red", "this should be red, ", "color:green", "this should be green");
   let colors = [
       '#f00', // red
       '#f80', // orange
@@ -389,7 +391,7 @@
       if (true || friendlyHeaders.length > 0) {  // XXX HACK
         friendlyHeaders = friendlyHeaders.map(function(nameValue) { return [nameValue.name, nameValue.value]; });
         let key = EXACT(stash[details.requestId].urls);
-        if (key.indexOf('uberproxy') != -1) { // XXX HACK
+        if (key.indexOf('uberproxy') != -1) { // XXX HACK. don't even know what I was doing.
           if (verboseLevel >= 2) {
             // we are showing swim lanes, so do it in the swim lanes, whether or not seen before.
             RequestLogFlush();
@@ -544,6 +546,7 @@
     });
   }
 
-  if (verboseLevel >= 1) console.log("      to dump state, make special request http://heyheyhey/");
+  if (verboseLevel >= 1) console.log("      to dump state: http://heyheyhey/");
+  if (verboseLevel >= 1) console.log("      to change verboseLevel: http://heyheyhey?verboseLevel=<n>");
   if (verboseLevel >= 1) console.log("    out background.js");
 }()); // end of IIFE
