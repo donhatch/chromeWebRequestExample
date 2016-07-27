@@ -544,5 +544,6 @@
     });
   }
 
+  if (verboseLevel >= 1) console.log("      to dump state, make special request http://heyheyhey/");
   if (verboseLevel >= 1) console.log("    out background.js");
 }()); // end of IIFE
