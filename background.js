@@ -485,6 +485,9 @@
     if (verboseLevel >= 2) RequestLogFlush();  // definitely might be a while before more output
     return answer;
   };  // onErrorOccurredListener
+
+
+  // Each of the following listeners requires the "*://*/*" permission.
   chrome.webRequest.onBeforeRequest.addListener(onBeforeRequestListener, {urls:["<all_urls>"]}, [
     "blocking", // so we can cancel the heyheyhey, if nothing else... although maybe we shouldn't? think about this.
   ]);  // options: blocking, requestBody
