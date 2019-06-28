@@ -2,6 +2,8 @@
 //    - hard-code values of the first few variables below, then hit ctrl-r in background window to reload
 //    - http://heyheyhey causes dump of in-flight requests (if verboseLevel>=2)
 //    - http://heyheyhey?verboseLevel=<n> causes verboseLevel to be changed to <n>
+//    - as with any extension:
+//      - ctrl-R in the console page reloads the unpacked extension from disk
 // Notes:
 //	- unexpected onHeadersReceived of https://pr.comet.yahoo.com from time to time.
 //        oh hmm, it's ajax.  request id does seem to be from before I started but... Should look into how this happens.
@@ -10,7 +12,17 @@
 // TODO: maybe make an actual flush timer?  (what did I mean?)
 // TODO: stackoverflow question: "what's the most graceful way to make chrome.webRequest return a synthetic response?"
 //       See details down where I handle "heyheyhey" down below.
-
+// TODO: make background page more accessible, somehow
+//       (currently requires a couple of clicks: extension icon -> "Manage Extensions" (which actually goes straight to this extension) -> "background page"
+//      - that first item in the extension icon dropdown menu doesn't do anything, maybe could make it go directly to the background page?
+//       Oh, lookee here! https://medium.com/damon-aw/working-with-background-pages-on-chrome-extensions-this-hack-will-change-your-life-b6df8a29d86
+//       so, can just paste chrome-extension://pebbhcjfokadbgbnlmogdkkaahmamnap/background.html ?
+//       aww it doesn't work any more, I don't think
+//       Oh!  I see this in  the console:
+//           Navigated to chrome-extension://pebbhcjfokadbgbnlmogdkkaahmamnap/_generated_background_page.html
+//       So it *is* there, the name just wasn't quite right.
+//       Wait what?   I can open different instances of it in different tabs?
+// TODO: make better controls to start/stop monitoring.  Probably should *not* be monitoring by default, but be able to start/stop from the context menu icon.
 
 // Per http://stackoverflow.com/questions/24369328/how-to-use-strict-mode-in-chrome-javascript-console,
 // "The easiest way to use strict mode is to use an IIFE (Immediately invoked Function Expression).
@@ -523,12 +535,72 @@
     onStartupOrOnInstalledListener();
     if (verboseLevel >= 1) console.log("        out onInstalled listener");
   });  // onInstalled listener
+  // this might not be interesting, I don't know
+  chrome.runtime.onMessage.addListener(function() {
+    if (verboseLevel >= 1) console.log("        in onMessage listener");
+    if (verboseLevel >= 1) console.log("        out onMessage listener");
+  });  // onMessage listener
+
+  if (true) {
+    // Mess around with the extension icon and context menu.
+    // https://stackoverflow.com/questions/19468429/add-contextmenu-items-to-a-chrome-extensions-browser-action-button
+    chrome.contextMenus.removeAll();
+    chrome.contextMenus.create({
+        title: "A \"background page\"",
+        contexts: ["browser_action"],
+        onclick: function() {
+          //alert('clicked on the menu item!');
+          open('chrome-extension://pebbhcjfokadbgbnlmogdkkaahmamnap/_generated_background_page.html');
+        },
+    });
+    chrome.contextMenus.create({
+        "title": "Buzz This",
+        "contexts": ["page", "selection", "image", "link"],
+        "onclick" : function() {
+          alert("hey!");
+        }
+    });
+    const colors = [
+      '#ff0000',
+      '#ff8000',
+      '#ffff00',
+      '#80ff00',
+      '#00ff00',
+      '#00ff80',
+      '#00ffff',
+      '#0080ff',
+      '#0000ff',
+      '#8000ff',
+      '#ff00ff',
+      '#ff0080',
+    ];
+    let numClicks = 0;
+    chrome.browserAction.setBadgeBackgroundColor({color: colors[0]});
+    chrome.browserAction.onClicked.addListener(function(tab) {
+      ++numClicks;
+      console.log("icon clicked, tab = ",tab);
+      chrome.browserAction.setBadgeText({
+        text: numClicks.toString(),
+      });
+      chrome.browserAction.setBadgeBackgroundColor({
+        color: colors[numClicks % colors.length],
+      });
+      chrome.browserAction.setIcon({
+        path: "icon.160x160.png",  // note, 160x160 seems to be the max to avoid "Unchecked runtime.lastError: Icon invalid."
+      });
+      chrome.browserAction.setTitle({
+        title: "You clicked this thing "+numClicks+" time"+(numClicks==1?"":"s"),
+      });
+    });
+  }
+
 
   if (monitorCookiesToo) {
     //
     // https://developer.chrome.com/extensions/cookies
     // https://developer.chrome.com/extensions/samples#search:cookies
     //
+    // CBB: note that if "cookies" isn't in permissions in the manifest, this gives an error "Uncaught TypeError: Cannot read property 'onChanged' of undefined" here.
     chrome.cookies.onChanged.addListener(function(info) {
       //console.log("in cookie onChanged listener(cause="+EXACT(info.cause)+")");
       //console.log("  info = "+EXACT(info));
@@ -547,6 +619,14 @@
       //console.log("      info.cookie = "+EXACT(info.cookie));
       //console.log("out cookie onChanged listener(cause="+EXACT(info.cause)+")");
     });
+  }
+
+  if (true) {
+    // Can I mess with the page?  Yup.
+    // It shows up in chrome-extension://pebbhcjfokadbgbnlmogdkkaahmamnap/_generated_background_page.html, not sure how that's supposed to be used.
+    if (verboseLevel >= 1) console.log("      adding something to body maybe");
+    document.body.innerHTML += "Hello, I am a background page for the chromeWebRequestExample extension.  Open the developer console to see more.";
+    if (verboseLevel >= 1) console.log("      added something to body maybe");
   }
 
   if (verboseLevel >= 1) console.log("      to dump state: http://heyheyhey/");

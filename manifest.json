@@ -1,18 +1,26 @@
 {
     "name": "chromeWebRequestExample",
+    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAg/wAu86aayfkDEvVAGgdtl8FS2/axn1JqdDl9awFDUdSLZrCNJ/7vMJBEUp3IpgzBMF+qFH9UZFQJIuyo2vRHnmIXDMVXEfYLmIJ9WfMYQnu8sUvcTilj7zCzaWSyo1/VqGeahsRX18VZBaMyOc4vauSojZFi66ZkR+dd9JoPhbxFFAMrcZkYeoIL27+ofKRy01gCBN/p3kQtowfvQtxGA+5irSqspXPtFIeTY20ZBhGaYR1KXu9wwa9ghtuQPf00Gy8+FyDzFwemawJ3KjlATokTjqEw9Z8ZM1kB6sS0q50xSJUhlbQ+/FMFN0owm7K5UHTSXGOALS8YPnHASeP3wIDAQAB",
     "version": "0.0.0",
     "description": "Example of using chrome.webRequest API.",
     "background": {
+        "persistent": true,  /* can I put a comment here?  cool :-) "persistent":false is supposedly incompatible with chrome.webRequest. */
 	"scripts": [
             "EXACT.js",
             "background.js"
         ]
     },
+    "browser_action": {
+      "default_title": "chrome.webRequest example",
+      "default_icon": "default_icon.160x160.png"
+    },
     "permissions": [
 	"webRequest",
 	"webRequestBlocking",
         "cookies",
-	"*://*/*"
+        "contextMenus",
+        "browserAction",
+	"*://*/*"  /* without this, gives "Unchecked runtime.lastError: You need to request host permissions in the manifest file in order to be notified about requests from the webRequest API.", not sure why */
     ],
     "manifest_version": 2
 }
