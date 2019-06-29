@@ -10,17 +10,19 @@
             "background.js"
         ]
     },
+    "options_page": "options.html",
     "browser_action": {
       "default_title": "chrome.webRequest example",
       "default_icon": "default_icon.160x160.png"
     },
     "permissions": [
+        "browserAction",
+        "contextMenus",
+        "cookies",
+        "history",
 	"webRequest",
 	"webRequestBlocking",
-        "cookies",
-        "contextMenus",
-        "browserAction",
-	"*://*/*"  /* without this, gives "Unchecked runtime.lastError: You need to request host permissions in the manifest file in order to be notified about requests from the webRequest API.", not sure why */
+	"*://*/*"  /* without this, gives "Unchecked runtime.lastError: You need to request host permissions in the manifest file in order to be notified about requests from the webRequest API." */
     ],
     "manifest_version": 2
 }
