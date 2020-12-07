@@ -16,7 +16,6 @@
       "default_icon": "default_icon.160x160.png"
     },
     "permissions": [
-        "browserAction",
         "contextMenus",
         "cookies",
         "history",
